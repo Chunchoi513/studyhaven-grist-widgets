@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>報名人工處理</title>
+<style>body{font:16px system-ui;margin:20px;color:#203242;background:#f6f8fb}main{max-width:650px;margin:auto;background:white;padding:24px;border-radius:16px}button{padding:13px 16px;margin:5px;border:1px solid #bccbd7;border-radius:8px;background:white;cursor:pointer}button:disabled{opacity:.45;cursor:default}#result{white-space:pre-wrap;background:#eef4f9;padding:16px;border-radius:10px}input{padding:10px;border:1px solid #bccbd7;border-radius:6px}small{color:#576c7c}h2{margin-top:0}</style>
+<main><h2>報名人工處理</h2><p id="student">請在 Grist 選擇一筆報名。</p>
+<p>先按「人工接手」，等候顯示可以修改。改好資料後，按「檢查下一步」，看清楚方案再確認。</p>
+<p><label>操作同事：<input id="operator" placeholder="姓名" maxlength="60"></label></p>
+<div><button data-action="PAUSE">人工接手</button><button data-action="CHECK_AND_RESUME">檢查下一步</button><button data-action="EXECUTE_PLAN">確認執行</button><button data-action="RECHECK_PAYMENT">核對付款</button></div>
+<p id="result" role="status">尚未選擇報名。</p>
+<p><small>付款以 Airwallex 紀錄為準。若顯示「請主管核對」，請先交主管處理。</small></p>
+<details><summary>主管查看處理編號</summary><p id="reference"></p></details></main>
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<script>
+let selected=null,tableId='Application',busy=false;
+/* SNAPSHOT_START */
+function snapshot(f) {
+  const raw=Array.isArray(f.Lesson_Dates_List)?f.Lesson_Dates_List:String(f.Lesson_Dates_List??'').split(/[\n,]+/);
+  const values=raw[0]==='L'?raw.slice(1):raw;
+  const dates=values.map(v=>String(v).trim().replaceAll('-','/'));
+  const valid=dates.length>0&&new Set(dates).size===dates.length&&dates.every(v=>{
+    if(!/^\d{4}\/\d{2}\/\d{2}$/.test(v))return false;
+    const [y,m,d]=v.split('/').map(Number),date=new Date(Date.UTC(y,m-1,d));
+    return y>=2000&&date.getUTCFullYear()===y&&date.getUTCMonth()===m-1&&date.getUTCDate()===d;
+  });
+  return JSON.stringify({Class:f.Class??'',Brand:f.Brand??null,Phone:f.Phone??'',English_Full_name:f.English_Full_name??'',
+    Chinese_Full_name:f.Chinese_Full_name??'',Nickname:f.Nickname??'',Class_ref:f.Class_ref??null,
+    Tutor:f.Tutor??null,
+    Manual_Start_Date:f.Manual_Start_Date??null,Lesson_Dates_List:dates,Dates_Valid:valid,
+    Tuition_Fee:Number(f.Tuition_Fee),Discount_approve:f.Discount_approve===true});
+}
+/* SNAPSHOT_END */
+const el=id=>document.getElementById(id);
+const pending=r=>['QUEUED','RUNNING'].includes(r?.Manual_Action_Status);
+const parse=r=>{try{return JSON.parse(r?.Manual_Plan||'null');}catch{return null;}};
+const buttons=()=>{for(const b of document.querySelectorAll('button')){const a=b.dataset.action,p=parse(selected);b.disabled=busy||!selected||pending(selected)||(a==='CHECK_AND_RESUME'&&(selected.Automation_Mode!=='PAUSED'||selected.Manual_Pause_Ready!=='YES'))||(a==='EXECUTE_PLAN'&&(selected.Manual_Action_Status!=='PREVIEW'||!p||p.route==='BLOCKED'))||(a==='RECHECK_PAYMENT'&&!selected.Payment_Link_ID);}};
+const stale=r=>pending(r)&&Number.isFinite(Number(r.Manual_Action_Requested_At))&&Date.now()/1000-Number(r.Manual_Action_Requested_At)>600;
+const render=()=>{el('student').textContent=selected?`${selected.Nickname||selected.English_Full_name||'學生'}｜${selected.Class||'未選課堂'}`:'請選擇一筆報名。';el('result').textContent=selected?(pending(selected)?(stale(selected)?'處理時間過長，請交主管核對，暫時不要重按。':'正在處理，請等候完成。'):selected.Manual_Action_Result||'請先按「人工接手」。'):'尚未選擇報名。';el('reference').textContent=selected?`報名：${selected.id}　處理：${selected.Manual_Request_Execution_ID||'尚無'}`:'';buttons();};
+grist.ready({requiredAccess:'full'});
+grist.onOptions(options=>{tableId=options?.tableId||'Application';});
+grist.onRecord(record=>{selected=record;render();});
+for(const b of document.querySelectorAll('button'))b.onclick=async()=>{
+ if(!selected||busy||b.disabled||pending(selected))return;
+ const operator=el('operator').value.trim();if(!operator){el('result').textContent='請填寫操作同事姓名。';return;}
+ const row=selected.id,action=b.dataset.action,displayedPlan=selected.Manual_Plan;let plan=action==='EXECUTE_PLAN'?parse(selected):null;
+ busy=true;buttons();
+ try{
+  const table=await grist.docApi.fetchTable(tableId),index=table.id.indexOf(row);
+  if(index<0)throw new Error('報名已不存在，請重新選擇。');
+  const fresh=Object.fromEntries(Object.entries(table).map(([key,values])=>[key,values[index]]));
+  if(pending(fresh))throw new Error('已有同事提交操作，請等候完成。');
+  if(action==='CHECK_AND_RESUME'&&(fresh.Automation_Mode!=='PAUSED'||fresh.Manual_Pause_Ready!=='YES'))throw new Error('請先按「人工接手」，等候顯示可以修改。');
+  if(action==='EXECUTE_PLAN'&&(!plan||plan.route==='BLOCKED'||fresh.Manual_Plan!==displayedPlan||!Number.isFinite(plan.created_at)||Date.now()-plan.created_at>600000))throw new Error('方案已改變或過期，請重新檢查。');
+  const require={id:row,Manual_Request_ID:fresh.Manual_Request_ID||'',Manual_Action_Status:fresh.Manual_Action_Status||'',Automation_Owner:fresh.Automation_Owner||'',Automation_Epoch:fresh.Automation_Epoch||''};
+  const request=crypto.randomUUID(),fields={Manual_Action:action,Manual_Request_ID:request,Manual_Action_By:operator,Manual_Action_Requested_At:Math.floor(Date.now()/1000),Manual_Action_Status:'QUEUED',Manual_Action_Result:'正在處理，請等候完成。',Manual_Confirmed_Plan_ID:plan?.id||''};
+  if(action==='PAUSE'){fields.Automation_Mode='PAUSED';if(fresh.Automation_Mode!=='PAUSED'||fresh.Manual_Pause_Ready!=='YES'){fields.Automation_Epoch=request;fields.Manual_Pause_Ready='';fields.Manual_Pause_Snapshot=snapshot(fresh);if(!fresh.Automation_Business_Fingerprint||String(fresh.Automation_Business_Fingerprint).startsWith('#'))throw new Error('請管理員先完成設定。');require.Automation_Business_Fingerprint=fresh.Automation_Business_Fingerprint;}}
+  const response=await grist.docApi.applyUserActions([['AddOrUpdateRecord',tableId,require,fields,{add:false,update:true,on_many:'none'}]]);
+  if(response?.retValues?.[0]?.action!=='UPDATE'||response.retValues[0].recordIds?.length!==1)throw new Error('資料剛被其他同事更改，請重新選擇報名。');
+  if(selected?.id===row){selected={...fresh,...fields};render();}
+ }catch(e){el('result').textContent='未能提交：'+e.message;}
+ finally{busy=false;buttons();}
+};
+</script></html>
