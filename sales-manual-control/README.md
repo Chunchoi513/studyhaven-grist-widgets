@@ -13,7 +13,7 @@ Grist 的 Custom widget，放在 **Application** 表旁邊。選一位學生後�
 
 1. Admin 文件 → 有 Application 表的頁面 → **Add New → Add widget to page → Custom**。
 2. 資料來源 **Application**；**Select By** 連到報名表。
-3. **Custom URL**：`<網站網址>/sales-manual-control/`（見上層 README 的「已部署位置」）
+3. **Custom URL**：`https://chunchoi513.github.io/studyhaven-grist-widgets/sales-manual-control/`
 4. **Access**：Full document access。
 
 ## 它怎樣運作
