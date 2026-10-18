@@ -6,14 +6,15 @@ StudyHaven 在 Grist 使用的自訂 widget（Custom widget）集中放在這個
 
 | Widget | 資料夾 | 用途 | Grist 的 Custom URL | 狀態 |
 |---|---|---|---|---|
-| 招生人工控制（四個按鈕） | [`sales-manual-control/`](sales-manual-control/) | 在 Application 表選一位學生，按「人工接手／檢查下一步／確認執行／核對付款」 | `<網站網址>/sales-manual-control/`（例如 `https://studyhaven-grist-widgets.netlify.app/sales-manual-control/`） | 測試中（Sandbox） |
+| 招生人工控制（四個按鈕） | [`sales-manual-control/`](sales-manual-control/) | 在 Application 表選一位學生，按「人工接手／檢查下一步／確認執行／核對付款」 | `<網站網址>/sales-manual-control/`（目前：`https://chunchoi513.github.io/studyhaven-grist-widgets/sales-manual-control/`） | 測試中（Sandbox） |
 
 > `<網站網址>` 是這個資料夾部署後得到的網址；實際網址記錄在下面「已部署位置」。
 
 ## 已部署位置
 
-- 主機：（部署後填寫）
-- 網址：（部署後填寫）
+- 主機：GitHub Pages（repo：`https://github.com/Chunchoi513/studyhaven-grist-widgets`，公開，分支 `main`，根目錄）
+- 網站：`https://chunchoi513.github.io/studyhaven-grist-widgets/`
+- `sales-manual-control` 的 Custom URL：`https://chunchoi513.github.io/studyhaven-grist-widgets/sales-manual-control/`
 
 ## 結構與命名規則
 
