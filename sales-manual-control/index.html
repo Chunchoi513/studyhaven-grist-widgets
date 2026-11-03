@@ -53,8 +53,11 @@ for(const b of document.querySelectorAll('button'))b.onclick=async()=>{
   const require={id:row,Manual_Request_ID:fresh.Manual_Request_ID||'',Manual_Action_Status:fresh.Manual_Action_Status||'',Automation_Owner:fresh.Automation_Owner||'',Automation_Epoch:fresh.Automation_Epoch||''};
   const request=crypto.randomUUID(),fields={Manual_Action:action,Manual_Request_ID:request,Manual_Action_By:operator,Manual_Action_Requested_At:Math.floor(Date.now()/1000),Manual_Action_Status:'QUEUED',Manual_Action_Result:'正在處理，請等候完成。',Manual_Confirmed_Plan_ID:plan?.id||''};
   if(action==='PAUSE'){fields.Automation_Mode='PAUSED';if(fresh.Automation_Mode!=='PAUSED'||fresh.Manual_Pause_Ready!=='YES'){fields.Automation_Epoch=request;fields.Manual_Pause_Ready='';fields.Manual_Pause_Snapshot=snapshot(fresh);if(!fresh.Automation_Business_Fingerprint||String(fresh.Automation_Business_Fingerprint).startsWith('#'))throw new Error('請管理員先完成設定。');require.Automation_Business_Fingerprint=fresh.Automation_Business_Fingerprint;}}
-  const response=await grist.docApi.applyUserActions([['AddOrUpdateRecord',tableId,require,fields,{add:false,update:true,on_many:'none'}]]);
-  if(response?.retValues?.[0]?.action!=='UPDATE'||response.retValues[0].recordIds?.length!==1)throw new Error('資料剛被其他同事更改，請重新選擇報名。');
+  /* 不用 AddOrUpdate 系列動作：Grist 要求該表完全可讀，職員看不到 KPI 欄（role-access-2026-10-30）時會報 Blocked by table read access rules。
+     改為送出前再讀一次、核對 require，再用 UpdateRecord。 */
+  const latest=await grist.docApi.fetchTable(tableId),li=latest.id.indexOf(row);
+  if(li<0||Object.entries(require).some(([key,value])=>key!=='id'&&(latest[key]?.[li]||'')!==value))throw new Error('資料剛被其他同事更改，請重新選擇報名。');
+  await grist.docApi.applyUserActions([['UpdateRecord',tableId,row,fields]]);
   if(selected?.id===row){selected={...fresh,...fields};render();}
  }catch(e){el('result').textContent='未能提交：'+e.message;}
  finally{busy=false;buttons();}
