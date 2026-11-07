@@ -6,6 +6,7 @@
 <p>先按「人工接手」，等候顯示可以修改。改好資料後，按「檢查下一步」，看清楚方案再確認。</p>
 <p><label>操作同事：<input id="operator" placeholder="姓名" maxlength="60"></label></p>
 <div><button data-action="PAUSE">人工接手</button><button data-action="CHECK_AND_RESUME">檢查下一步</button><button data-action="EXECUTE_PLAN">確認執行</button><button data-action="RECHECK_PAYMENT">核對付款</button></div>
+<div><button data-action="RESEND_LINK_24H">重發付款連結</button> <small>付款連結過期或學生收不到時用，不用先按「人工接手」。已付款、已取消、已人工接手的報名不能重發。</small></div>
 <p id="result" role="status">尚未選擇報名。</p>
 <p><small>付款以 Airwallex 紀錄為準。若顯示「請主管核對」，請先交主管處理。</small></p>
 <details><summary>主管查看處理編號</summary><p id="reference"></p></details></main>
@@ -29,6 +30,19 @@ function snapshot(f) {
     Tuition_Fee:Number(f.Tuition_Fee),Discount_approve:f.Discount_approve===true});
 }
 /* SNAPSHOT_END */
+/* RESEND_START */
+function resendBlockReason(f) {
+  const st = String(f.Status ?? '');
+  const paid = String(f.Payment_Status ?? '').toUpperCase() === 'PAID' || st === 'Paid';
+  const fail = Array.isArray(f.Fail_reason) ? f.Fail_reason.filter((x) => x !== 'L' && x) : (f.Fail_reason ? [f.Fail_reason] : []);
+  if (paid) return '已付款，不能重發付款連結。';
+  if (st === 'Cancelled' || f.Converted_ === true || fail.length) return '這份報名已取消、已轉化或已填未轉化原因，不能重發付款連結。';
+  if (String(f.Automation_Mode ?? 'AUTO').toUpperCase() === 'PAUSED') return '這份報名已由同事人工接手，不能用這個按鈕重發。請用「檢查下一步」和「確認執行」處理。';
+  if (st === 'Manual Follow-up Required') return '這份報名需要人工跟進（學生按了聯絡客服或系統轉交），不能自動重發。請先按「人工接手」處理。';
+  if (!['Payment Link Sent', 'Payment Link Created', 'Payment Link Delivery Failed'].includes(st) || !String(f.Payment_Link_ID ?? '').trim()) return '這份報名現時沒有付款連結可以重發（學生可能還沒按「確認時間及繳費」）。';
+  return '';
+}
+/* RESEND_END */
 const el=id=>document.getElementById(id);
 const pending=r=>['QUEUED','RUNNING'].includes(r?.Manual_Action_Status);
 const parse=r=>{try{return JSON.parse(r?.Manual_Plan||'null');}catch{return null;}};
@@ -48,6 +62,7 @@ for(const b of document.querySelectorAll('button'))b.onclick=async()=>{
   if(index<0)throw new Error('報名已不存在，請重新選擇。');
   const fresh=Object.fromEntries(Object.entries(table).map(([key,values])=>[key,values[index]]));
   if(pending(fresh))throw new Error('已有同事提交操作，請等候完成。');
+  if(action==='RESEND_LINK_24H'){const why=resendBlockReason(fresh);if(why)throw new Error(why);}
   if(action==='CHECK_AND_RESUME'&&(fresh.Automation_Mode!=='PAUSED'||fresh.Manual_Pause_Ready!=='YES'))throw new Error('請先按「人工接手」，等候顯示可以修改。');
   if(action==='EXECUTE_PLAN'&&(!plan||plan.route==='BLOCKED'||fresh.Manual_Plan!==displayedPlan||!Number.isFinite(plan.created_at)||Date.now()-plan.created_at>600000))throw new Error('方案已改變或過期，請重新檢查。');
   const require={id:row,Manual_Request_ID:fresh.Manual_Request_ID||'',Manual_Action_Status:fresh.Manual_Action_Status||'',Automation_Owner:fresh.Automation_Owner||'',Automation_Epoch:fresh.Automation_Epoch||''};
